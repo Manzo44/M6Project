@@ -1,7 +1,7 @@
 // UserService.java
-// D. Singletary
-// 11/20/25
-// User service for task manager application
+// Cristian Manzo
+// October 26, 2026
+// User service for task manager application, salts and hashes passwords with PBKDF2
 
 package edu.fscj.cen3024c.taskmanager.services;
 
@@ -15,12 +15,23 @@ import edu.fscj.cen3024c.taskmanager.repositories.UserRepository;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import javax.crypto.SecretKeyFactory;
+import javax.crypto.spec.PBEKeySpec;
+import java.security.SecureRandom;
+import java.util.Base64;
 import java.util.List;
 import java.util.Set;
 import java.util.stream.Collectors;
 
 @Service
 public class UserService {
+
+    // SHA-256 instead of the PDF's SHA1, with OWASP's iteration count for it
+    private static final String ALGORITHM = "PBKDF2WithHmacSHA256";
+    private static final int ITERATIONS = 600000;
+    private static final int KEY_LENGTH_BITS = 256;
+    private static final int SALT_BYTES = 16;
+    private static final SecureRandom RANDOM = new SecureRandom();
 
     private final UserRepository userRepository;
 
@@ -56,19 +67,62 @@ public class UserService {
 
     @Transactional
     public UserDTO createUser(CreateUserRequestDTO request) {
-        User user = new User(request.getUsername(), request.getPassword());
+
+        String salt = generateSalt();
+
+        String hash;
+        try {
+            hash = hashPassword(request.getPassword(), salt);
+        } catch (Exception e) {
+            throw new RuntimeException("Error hashing password", e);
+        }
+
+        User user = new User();
+        user.setUsername(request.getUsername());
+        user.setSalt(salt);
+        user.setPasswordHash(hash);
+
         User savedUser = userRepository.save(user);
         return convertToDTO(savedUser);
     }
 
     @Transactional
     public UserDTO updateUser(Integer id, UpdateUserRequestDTO request) {
+
         User existingUser = findByIdEntity(id);
+
         existingUser.setUsername(request.getUsername());
-        existingUser.setPassword(request.getPassword()); // will be hashed in a later module
+
+        // Always re-hash since password is required
+        String salt = generateSalt();
+
+        String hash;
+        try {
+            hash = hashPassword(request.getPassword(), salt);
+        } catch (Exception e) {
+            throw new RuntimeException("Error hashing password", e);
+        }
+        existingUser.setSalt(salt);
+        existingUser.setPasswordHash(hash);
 
         User updatedUser = userRepository.save(existingUser);
         return convertToDTO(updatedUser);
+    }
+
+    // ===== Salt and Hash Helpers =====
+
+    private String generateSalt() {
+        byte[] salt = new byte[SALT_BYTES];
+        RANDOM.nextBytes(salt);
+        return Base64.getEncoder().encodeToString(salt);
+    }
+
+    private String hashPassword(String password, String salt) throws Exception {
+        PBEKeySpec spec = new PBEKeySpec(password.toCharArray(),
+                Base64.getDecoder().decode(salt), ITERATIONS, KEY_LENGTH_BITS);
+        SecretKeyFactory factory = SecretKeyFactory.getInstance(ALGORITHM);
+        byte[] hash = factory.generateSecret(spec).getEncoded();
+        return Base64.getEncoder().encodeToString(hash);
     }
 
     public void deleteById(Integer id) {
