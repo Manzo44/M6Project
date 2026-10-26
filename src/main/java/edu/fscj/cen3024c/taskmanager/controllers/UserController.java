@@ -1,7 +1,7 @@
 // UserController.java
-// D. Singletary
-// 11/20/25
-// Controller for User entity, returns DTOs with task titles
+// Cristian Manzo
+// October 26, 2026
+// Controller for User entity, adds a method-level CORS policy to get all users
 
 package edu.fscj.cen3024c.taskmanager.controllers;
 
@@ -25,6 +25,8 @@ public class UserController {
 
     // ===== READ endpoints return DTOs =====
 
+    // also allows http://localhost on top of the global example.com policy
+    @CrossOrigin(origins = {"http://example.com", "http://localhost"})
     @GetMapping
     public List<UserDTO> getAllUsers() {
         return userService.findAll();
